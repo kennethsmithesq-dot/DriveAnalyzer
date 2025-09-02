@@ -26,10 +26,11 @@ jobs:
       - name: Build with PyInstaller
         run: |
           # adjust --add-data if your resources live elsewhere
-          pyinstaller --noconfirm --clean --onefile TEST.py
+          pyinstaller --noconfirm --clean --onefile TEST.py --add-data \"assets/title.png:.\" --add-data \"assets/ico.png:.\" --add-data \"assets/fonts:assets/fonts\"
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: DriveAnalyzer-macos
           path: dist/
+
