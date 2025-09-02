@@ -25,8 +25,11 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          # adjust --add-data if your resources live elsewhere
-          pyinstaller --noconfirm --clean --onefile TEST.py --add-data \"assets/title.png:.\" --add-data \"assets/ico.png:.\" --add-data \"assets/fonts:assets/fonts\"
+          # debug: show the command that will run
+          echo "PYINSTALLER CMD:"
+          echo pyinstaller --noconfirm --clean --onefile TEST.py --add-data 'assets/title.png:.' --add-data 'assets/ico.png:.' --add-data 'assets/fonts:assets/fonts'
+          # run pyinstaller with single-quoted --add-data args to avoid literal double-quote injection
+          pyinstaller --noconfirm --clean --onefile TEST.py --add-data 'assets/title.png:.' --add-data 'assets/ico.png:.' --add-data 'assets/fonts:assets/fonts'
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
