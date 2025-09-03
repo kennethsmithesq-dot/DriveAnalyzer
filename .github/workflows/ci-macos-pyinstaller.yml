@@ -74,13 +74,36 @@ jobs:
       - name: Prepare files
         run: |
           set -eux
-          ARM_BIN=$(ls ./artifacts/arm64/dist/* | grep -v '\.DS_Store' | head -n1 || true)
-          X86_BIN=$(ls ./artifacts/x86_64/dist/* | grep -v '\.DS_Store' | head -n1 || true)
-          echo "ARM_BIN=${ARM_BIN}"
-          echo "X86_BIN=${X86_BIN}"
+
+          echo "Listing downloaded artifact roots..."
+          echo "artifacts/arm64 content:"
+          ls -la ./artifacts/arm64 || true
+          echo "artifacts/arm64/dist content:"
+          ls -la ./artifacts/arm64/dist || true
+          echo "artifacts/x86_64 content:"
+          ls -la ./artifacts/x86_64 || true
+          echo "artifacts/x86_64/dist content:"
+          ls -la ./artifacts/x86_64/dist || true
+
+          # Try to find the binary either at the archive root or under dist/
+          ARM_BIN=$(ls ./artifacts/arm64/dist/* ./artifacts/arm64/* 2>/dev/null | grep -v '\.DS_Store' | head -n1 || true)
+          X86_BIN=$(ls ./artifacts/x86_64/dist/* ./artifacts/x86_64/* 2>/dev/null | grep -v '\.DS_Store' | head -n1 || true)
+
+          echo "Resolved ARM_BIN=${ARM_BIN}"
+          echo "Resolved X86_BIN=${X86_BIN}"
+
           mkdir -p out
-          if [ -f "$ARM_BIN" ]; then cp "$ARM_BIN" out/TEST-arm64; fi
-          if [ -f "$X86_BIN" ]; then cp "$X86_BIN" out/TEST-x86_64; fi
+          if [ -n "$ARM_BIN" ] && [ -f "$ARM_BIN" ]; then
+            cp "$ARM_BIN" out/TEST-arm64
+          else
+            echo "ARM binary not found" >&2
+          fi
+
+          if [ -n "$X86_BIN" ] && [ -f "$X86_BIN" ]; then
+            cp "$X86_BIN" out/TEST-x86_64
+          else
+            echo "X86 binary not found" >&2
+          fi
 
       - name: Create universal with lipo (if both present)
         run: |
