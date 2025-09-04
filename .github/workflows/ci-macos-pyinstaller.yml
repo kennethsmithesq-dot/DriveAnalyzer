@@ -2,9 +2,9 @@ name: macOS PyInstaller Build (universal)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, add/macos-ci-from-main ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, add/macos-ci-from-main ]
   workflow_dispatch:
 
 jobs:
@@ -47,11 +47,22 @@ jobs:
             mv dist/TEST dist/TEST-arm64 || true
           fi
 
-      - name: Upload arch artifact
+      - name: Package arch artifact (tar.gz)
+        run: |
+          set -eux
+          if [ -d dist ]; then
+            tar -C dist -czf driveanalyzer-${{ matrix.arch }}.tar.gz .
+            ls -la driveanalyzer-${{ matrix.arch }}.tar.gz
+          else
+            echo "Warning: dist directory not found"
+            ls -la || true
+          fi
+
+      - name: Upload arch artifact (tar.gz)
         uses: actions/upload-artifact@v4
         with:
           name: driveanalyzer-${{ matrix.arch }}
-          path: dist/
+          path: driveanalyzer-${{ matrix.arch }}.tar.gz
 
   make-universal:
     name: Create universal binary
@@ -71,23 +82,36 @@ jobs:
           path: ./artifacts/x86_64
         continue-on-error: true
 
-      - name: Prepare files
+      - name: Prepare files (extract and locate binaries)
         run: |
           set -eux
-
           echo "Listing downloaded artifact roots..."
+          ls -la ./artifacts || true
           echo "artifacts/arm64 content:"
           ls -la ./artifacts/arm64 || true
-          echo "artifacts/arm64/dist content:"
-          ls -la ./artifacts/arm64/dist || true
           echo "artifacts/x86_64 content:"
           ls -la ./artifacts/x86_64 || true
-          echo "artifacts/x86_64/dist content:"
-          ls -la ./artifacts/x86_64/dist || true
 
-          # Try to find the binary either at the archive root or under dist/
-          ARM_BIN=$(ls ./artifacts/arm64/dist/* ./artifacts/arm64/* 2>/dev/null | grep -v '\.DS_Store' | head -n1 || true)
-          X86_BIN=$(ls ./artifacts/x86_64/dist/* ./artifacts/x86_64/* 2>/dev/null | grep -v '\.DS_Store' | head -n1 || true)
+          # If the downloaded artifact is a tar.gz, extract it in place
+          for d in ./artifacts/arm64 ./artifacts/x86_64; do
+            if compgen -G "$d/*.tar.gz" > /dev/null; then
+              echo "Extracting archives in $d"
+              mkdir -p "$d"/extracted
+              for a in "$d"/*.tar.gz; do
+                echo "Extract $a"
+                tar -C "$d"/extracted -xzf "$a"
+              done
+            fi
+          done
+
+          echo "artifacts/arm64/extracted content:"
+          ls -la ./artifacts/arm64/extracted || true
+          echo "artifacts/x86_64/extracted content:"
+          ls -la ./artifacts/x86_64/extracted || true
+
+          # Try to find the binary at common locations: extracted/dist, extracted/, dist/, or root
+          ARM_BIN=$(ls ./artifacts/arm64/extracted/dist/* ./artifacts/arm64/extracted/* ./artifacts/arm64/dist/* ./artifacts/arm64/* 2>/dev/null | grep -v '\.DS_Store' | head -n1 || true)
+          X86_BIN=$(ls ./artifacts/x86_64/extracted/dist/* ./artifacts/x86_64/extracted/* ./artifacts/x86_64/dist/* ./artifacts/x86_64/* 2>/dev/null | grep -v '\.DS_Store' | head -n1 || true)
 
           echo "Resolved ARM_BIN=${ARM_BIN}"
           echo "Resolved X86_BIN=${X86_BIN}"
@@ -95,12 +119,14 @@ jobs:
           mkdir -p out
           if [ -n "$ARM_BIN" ] && [ -f "$ARM_BIN" ]; then
             cp "$ARM_BIN" out/TEST-arm64
+            ls -la out/TEST-arm64
           else
             echo "ARM binary not found" >&2
           fi
 
           if [ -n "$X86_BIN" ] && [ -f "$X86_BIN" ]; then
             cp "$X86_BIN" out/TEST-x86_64
+            ls -la out/TEST-x86_64
           else
             echo "X86 binary not found" >&2
           fi
@@ -108,6 +134,7 @@ jobs:
       - name: Create universal with lipo (if both present)
         run: |
           set -eux
+          ls -la out || true
           if [ -f out/TEST-arm64 ] && [ -f out/TEST-x86_64 ]; then
             lipo -create out/TEST-x86_64 out/TEST-arm64 -output out/TEST-universal
             chmod +x out/TEST-universal
