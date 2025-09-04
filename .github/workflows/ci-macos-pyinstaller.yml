@@ -135,6 +135,21 @@ jobs:
         run: |
           set -eux
           ls -la out || true
+          echo "-- debug: binary info --"
+          if [ -f out/TEST-arm64 ]; then
+            echo "TEST-arm64 file:"; file out/TEST-arm64 || true
+            echo "TEST-arm64 size:"; ls -lh out/TEST-arm64 || true
+            echo "TEST-arm64 head:"; head -c 64 out/TEST-arm64 | xxd || true
+          else
+            echo "TEST-arm64 not present"
+          fi
+          if [ -f out/TEST-x86_64 ]; then
+            echo "TEST-x86_64 file:"; file out/TEST-x86_64 || true
+            echo "TEST-x86_64 size:"; ls -lh out/TEST-x86_64 || true
+            echo "TEST-x86_64 head:"; head -c 64 out/TEST-x86_64 | xxd || true
+          else
+            echo "TEST-x86_64 not present"
+          fi
           if [ -f out/TEST-arm64 ] && [ -f out/TEST-x86_64 ]; then
             lipo -create out/TEST-x86_64 out/TEST-arm64 -output out/TEST-universal
             chmod +x out/TEST-universal
