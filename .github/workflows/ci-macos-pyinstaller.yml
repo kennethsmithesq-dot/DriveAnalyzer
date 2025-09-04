@@ -125,11 +125,30 @@ jobs:
             exit 1
           fi
 
-      - name: Package universal artifact
+      - name: Package universal artifact (tar.gz)
         run: |
-          mkdir -p out/dist
-          cp out/TEST-universal out/dist/TEST
+          set -eux
+          echo "Files before packaging:"
+          ls -la out || true
+          ls -la out/dist || true
+          if [ -f out/TEST-universal ]; then
+            cp out/TEST-universal out/dist/TEST
+          fi
+          # verify target exists
+          if [ ! -f out/dist/TEST ]; then
+            echo "ERROR: packaged binary out/dist/TEST not found" >&2
+            ls -la out/dist || true
+            exit 2
+          fi
+          # create tar.gz preserving permissions
           tar -C out/dist -czf driveanalyzer-macos-universal.tar.gz .
+          ls -la driveanalyzer-macos-universal.tar.gz
+
+      - name: Upload universal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DriveAnalyzer-macos-universal
+          path: driveanalyzer-macos-universal.tar.gz
 
       - name: Upload universal artifact
         uses: actions/upload-artifact@v4
