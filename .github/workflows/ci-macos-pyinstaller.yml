@@ -109,9 +109,30 @@ jobs:
           echo "artifacts/x86_64/extracted content:"
           ls -la ./artifacts/x86_64/extracted || true
 
-          # Try to find the binary at common locations: extracted/dist, extracted/, dist/, or root
-          ARM_BIN=$(ls ./artifacts/arm64/extracted/dist/* ./artifacts/arm64/extracted/* ./artifacts/arm64/dist/* ./artifacts/arm64/* 2>/dev/null | grep -v '\.DS_Store' | head -n1 || true)
-          X86_BIN=$(ls ./artifacts/x86_64/extracted/dist/* ./artifacts/x86_64/extracted/* ./artifacts/x86_64/dist/* ./artifacts/x86_64/* 2>/dev/null | grep -v '\.DS_Store' | head -n1 || true)
+          # Try to find the binary at common locations: prefer files inside the extracted tree
+          # Use `find` + `file` to select the first Mach-O executable (avoids accidentally selecting the .tar.gz archive)
+          ARM_BIN=""
+          while IFS= read -r -d '' f; do
+            # skip obvious archive files
+            case "${f}" in
+              *.tar.gz|*.zip) continue ;;
+            esac
+            if file "${f}" | grep -qE 'Mach-O|universal binary'; then
+              ARM_BIN="${f}"
+              break
+            fi
+          done < <(find ./artifacts/arm64 -type f -print0 2>/dev/null)
+
+          X86_BIN=""
+          while IFS= read -r -d '' f; do
+            case "${f}" in
+              *.tar.gz|*.zip) continue ;;
+            esac
+            if file "${f}" | grep -qE 'Mach-O|universal binary'; then
+              X86_BIN="${f}"
+              break
+            fi
+          done < <(find ./artifacts/x86_64 -type f -print0 2>/dev/null)
 
           echo "Resolved ARM_BIN=${ARM_BIN}"
           echo "Resolved X86_BIN=${X86_BIN}"
