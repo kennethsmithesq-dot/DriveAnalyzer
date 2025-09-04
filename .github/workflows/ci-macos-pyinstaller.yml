@@ -129,7 +129,7 @@ jobs:
         run: |
           mkdir -p out/dist
           cp out/TEST-universal out/dist/TEST
-          zip -r driveanalyzer-macos-universal.zip out/dist
+          tar -C out/dist -czf driveanalyzer-macos-universal.tar.gz .
 
       - name: Upload universal artifact
         uses: actions/upload-artifact@v4
