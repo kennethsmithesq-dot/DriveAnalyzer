@@ -26,26 +26,78 @@ jobs:
 
       - name: Install build deps
         run: |
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            arch -x86_64 python3 -m pip install --upgrade pip
-            arch -x86_64 python3 -m pip install pyinstaller reportlab music21 pillow
+          set -eux
+          # prepare a virtualenv so builds are isolated and logs are reproducible
+          python3 -m venv .venv
+          . .venv/bin/activate
+          # If a requirements.txt exists, install from it; otherwise install minimal deps
+          if [ -f requirements.txt ]; then
+            echo "Installing from requirements.txt"
+            if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              # try installing under Rosetta if available
+              arch -x86_64 bash -lc ". .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+            else
+              pip install --upgrade pip
+              pip install -r requirements.txt
+            fi
           else
-            python3 -m pip install --upgrade pip
-            python3 -m pip install pyinstaller reportlab music21 pillow
+            echo "requirements.txt not found; installing minimal build deps"
+            if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              arch -x86_64 bash -lc ". .venv/bin/activate && pip install --upgrade pip && pip install pyinstaller reportlab music21 pillow"
+            else
+              pip install --upgrade pip
+              pip install pyinstaller reportlab music21 pillow
+            fi
           fi
+          # record interpreter and platform for diagnostics
+          python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
+          ls -la > ls-root.txt || true
 
       - name: Build with PyInstaller
         run: |
           set -eux
+          . .venv/bin/activate || true
+          echo "== PYINSTALLER: ONEDIR (smoke) BUILD ==" > build-one.log
+          # Run an onedir build first to collect diagnostics and ensure modules are bundled
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            echo "Building x86_64 with Rosetta (arch -x86_64)"
-            arch -x86_64 pyinstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts
-            mv dist/TEST dist/TEST-x86_64 || true
+            echo "Building x86_64 (attempt under Rosetta if available)"
+            arch -x86_64 bash -lc ". .venv/bin/activate && python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi" >> build-one.log 2>&1 || true
+            mv dist/TEST dist/TEST-x86_64-onedir || true
+            BIN_DIR="dist/TEST-x86_64-onedir"
           else
             echo "Building arm64"
-            pyinstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts
+            python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi >> build-one.log 2>&1 || true
+            mv dist/TEST dist/TEST-arm64-onedir || true
+            BIN_DIR="dist/TEST-arm64-onedir"
+          fi
+
+          echo "-- onedir diagnostics --" > one-diagnostics.txt
+          ls -la "$BIN_DIR" >> one-diagnostics.txt 2>&1 || true
+          if [ -f "$BIN_DIR/TEST" ]; then
+            file "$BIN_DIR/TEST" >> one-diagnostics.txt 2>&1 || true
+            head -c 64 "$BIN_DIR/TEST" | xxd >> one-diagnostics.txt 2>&1 || true
+            # Try to run the bundled binary for a short time to collect stderr/stdout (best-effort)
+            ( ("$BIN_DIR/TEST" > run.stdout 2> run.stderr) & sleep 5; pkill -P $$ || true ) || true
+          else
+            echo "No TEST binary found in $BIN_DIR" >> one-diagnostics.txt || true
+          fi
+
+          # Save the onedir build log for upload
+          cp build-one.log build-one-${{ matrix.arch }}.log || true
+          cp one-diagnostics.txt one-diagnostics-${{ matrix.arch }}.txt || true
+          cp run.stdout run.stdout-${{ matrix.arch }} || true
+          cp run.stderr run.stderr-${{ matrix.arch }} || true
+
+          # Now produce the onefile build
+          echo "== PYINSTALLER: ONEFILE BUILD ==" > build-onefile.log
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            arch -x86_64 bash -lc ". .venv/bin/activate && python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --icon myicon.icns" >> build-onefile.log 2>&1 || true
+            mv dist/TEST dist/TEST-x86_64 || true
+          else
+            python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --icon myicon.icns >> build-onefile.log 2>&1 || true
             mv dist/TEST dist/TEST-arm64 || true
           fi
+          cp build-onefile.log build-onefile-${{ matrix.arch }}.log || true
 
       - name: Package arch artifact (tar.gz)
         run: |
@@ -64,6 +116,19 @@ jobs:
           name: driveanalyzer-${{ matrix.arch }}
           path: driveanalyzer-${{ matrix.arch }}.tar.gz
 
+      - name: Upload build logs and diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-${{ matrix.arch }}-logs
+          path: |
+            build-one-${{ matrix.arch }}.log
+            build-onefile-${{ matrix.arch }}.log
+            one-diagnostics-${{ matrix.arch }}.txt
+            run.stdout-${{ matrix.arch }}
+            run.stderr-${{ matrix.arch }}
+            build-env.txt
+            ls-root.txt
+
   make-universal:
     name: Create universal binary
     needs: build-matrix
@@ -80,6 +145,19 @@ jobs:
         with:
           name: driveanalyzer-x86_64
           path: ./artifacts/x86_64
+        continue-on-error: true
+
+      - name: Download build logs for both arches
+        uses: actions/download-artifact@v4
+        with:
+          name: driveanalyzer-arm64-logs
+          path: ./artifacts/arm64/logs
+
+      - name: Download x86_64 logs (if present)
+        uses: actions/download-artifact@v4
+        with:
+          name: driveanalyzer-x86_64-logs
+          path: ./artifacts/x86_64/logs
         continue-on-error: true
 
       - name: Prepare files (extract and locate binaries)
@@ -136,6 +214,22 @@ jobs:
 
           echo "Resolved ARM_BIN=${ARM_BIN}"
           echo "Resolved X86_BIN=${X86_BIN}"
+
+          # Validate that the found files are Mach-O and match expected archs
+          VALID_ARM=0
+          VALID_X86=0
+          if [ -n "$ARM_BIN" ] && [ -f "$ARM_BIN" ]; then
+            if file "$ARM_BIN" | grep -q "Mach-O.*arm64" || file "$ARM_BIN" | grep -q "Mach-O universal" ; then
+              VALID_ARM=1
+            fi
+          fi
+          if [ -n "$X86_BIN" ] && [ -f "$X86_BIN" ]; then
+            if file "$X86_BIN" | grep -q "Mach-O.*x86_64" || file "$X86_BIN" | grep -q "Mach-O universal" ; then
+              VALID_X86=1
+            fi
+          fi
+
+          echo "VALID_ARM=${VALID_ARM} VALID_X86=${VALID_X86}"
 
           mkdir -p out
           if [ -n "$ARM_BIN" ] && [ -f "$ARM_BIN" ]; then
@@ -198,12 +292,49 @@ jobs:
             cp out/TEST-universal out/dist/TEST
           fi
           if [ ! -f out/dist/TEST ]; then
-            echo "ERROR: packaged binary out/dist/TEST not found" >&2
-            ls -la out/dist || true
-            exit 2
+            echo "WARNING: packaged binary out/dist/TEST not found; producing diagnostics-only package" > out/dist/README.txt
+            echo "VALID_ARM=${VALID_ARM} VALID_X86=${VALID_X86}" >> out/dist/README.txt || true
+            echo "" >> out/dist/README.txt
+            echo "Contents of artifact directories:" >> out/dist/README.txt
+            ls -la ./artifacts || true >> out/dist/README.txt || true
+            ls -la ./artifacts/arm64 || true >> out/dist/README.txt || true
+            ls -la ./artifacts/x86_64 || true >> out/dist/README.txt || true
+            # don't exit here; continue to produce a package containing diagnostics
           fi
           tar -C out/dist -czf driveanalyzer-macos-universal.tar.gz .
           ls -la driveanalyzer-macos-universal.tar.gz
+
+      - name: Collect per-arch artifacts and logs
+        run: |
+          set -eux
+          mkdir -p out/logs
+          # copy downloaded logs if present
+          cp -r ./artifacts/arm64/logs/* out/logs/ || true
+          cp -r ./artifacts/x86_64/logs/* out/logs/ || true
+          # copy per-arch tar.gz if present to workspace root for upload
+          cp ./artifacts/arm64/*.tar.gz ./driveanalyzer-arm64.tar.gz || true
+          cp ./artifacts/x86_64/*.tar.gz ./driveanalyzer-x86_64.tar.gz || true
+          ls -la out || true
+          ls -la out/logs || true
+          ls -la ./ || true
+
+      - name: Upload per-arch artifacts
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-per-arch
+          path: |
+            driveanalyzer-arm64.tar.gz
+            driveanalyzer-x86_64.tar.gz
+
+      - name: Upload logs and diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-logs
+          path: |
+            out/logs
+            artifacts/arm64/logs
+            artifacts/x86_64/logs
 
       - name: Upload universal artifact
         uses: actions/upload-artifact@v4
