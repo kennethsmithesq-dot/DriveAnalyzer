@@ -64,12 +64,12 @@ jobs:
           # Run an onedir build first to collect diagnostics and ensure modules are bundled
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
             echo "Building x86_64 (attempt under Rosetta if available)"
-            arch -x86_64 bash -lc ". .venv/bin/activate && python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi" >> build-one.log 2>&1 || true
+            arch -x86_64 bash -lc ". .venv/bin/activate && python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido" >> build-one.log 2>&1 || true
             mv dist/TEST dist/TEST-x86_64-onedir || true
             BIN_DIR="dist/TEST-x86_64-onedir"
           else
             echo "Building arm64"
-            python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi >> build-one.log 2>&1 || true
+            python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido >> build-one.log 2>&1 || true
             mv dist/TEST dist/TEST-arm64-onedir || true
             BIN_DIR="dist/TEST-arm64-onedir"
           fi
@@ -94,10 +94,10 @@ jobs:
           # Now produce the onefile build
           echo "== PYINSTALLER: ONEFILE BUILD ==" > build-onefile.log
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            arch -x86_64 bash -lc ". .venv/bin/activate && python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --icon myicon.icns" >> build-onefile.log 2>&1 || true
+            arch -x86_64 bash -lc ". .venv/bin/activate && python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns" >> build-onefile.log 2>&1 || true
             mv dist/TEST dist/TEST-x86_64 || true
           else
-            python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --icon myicon.icns >> build-onefile.log 2>&1 || true
+            python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
             mv dist/TEST dist/TEST-arm64 || true
           fi
           cp build-onefile.log build-onefile-${{ matrix.arch }}.log || true
