@@ -43,14 +43,17 @@ jobs:
           else
             echo "requirements.txt not found; installing minimal build deps"
             if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              arch -x86_64 bash -lc ". .venv/bin/activate && pip install --upgrade pip && pip install pyinstaller reportlab music21 pillow"
+              arch -x86_64 bash -lc ". .venv/bin/activate && pip install --upgrade pip && pip install pyinstaller reportlab music21 pillow mido pygame"
             else
               pip install --upgrade pip
-              pip install pyinstaller reportlab music21 pillow
+              pip install pyinstaller reportlab music21 pillow mido pygame
             fi
           fi
           # record interpreter and platform for diagnostics
           python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
+          # Save list of installed packages for debugging missing-import issues (e.g., mido)
+          . .venv/bin/activate || true
+          pip freeze > installed-packages.txt || true
           ls -la > ls-root.txt || true
 
       - name: Build with PyInstaller
