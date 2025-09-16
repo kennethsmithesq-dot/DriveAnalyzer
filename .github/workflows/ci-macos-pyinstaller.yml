@@ -43,6 +43,14 @@ jobs:
           arch -x86_64 pip freeze > installed-packages.txt || true
           ls -la > ls-root.txt || true
 
+      - name: Copy DejaVu fonts to assets/fonts
+        run: |
+          set -eux
+          source .venv_x86_64/bin/activate
+          FONT_SRC=$(python3 -c "import matplotlib; import os; print(os.path.join(matplotlib.get_data_path(), 'fonts', 'ttf'))")
+          mkdir -p assets/fonts
+          cp -v $FONT_SRC/DejaVu*.ttf assets/fonts/ || true
+
       - name: Build with PyInstaller (x86_64 onefile)
         run: |
           set -eux
@@ -52,10 +60,6 @@ jobs:
             --add-data assets/title.png:. \
             --add-data assets/ico.png:. \
             --add-data assets/fonts:assets/fonts \
-            --add-data "/usr/local/lib/python3.11/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf:fonts/ttf/DejaVuSans.ttf" \
-            --add-data "/usr/local/lib/python3.11/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Bold.ttf:fonts/ttf/DejaVuSans-Bold.ttf" \
-            --add-data "/usr/local/lib/python3.11/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif.ttf:fonts/ttf/DejaVuSerif.ttf" \
-            --add-data "/usr/local/lib/python3.11/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Bold.ttf:fonts/ttf/DejaVuSerif-Bold.ttf" \
             --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
           mv dist/TEST dist/TEST-x86_64 || true
           cp build-onefile.log build-onefile-x86_64.log || true
