@@ -26,10 +26,10 @@ jobs:
       - name: Install build deps
         run: |
           set -eux
+          rm -rf .venv_x86_64
           arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
           source .venv_x86_64/bin/activate
           arch -x86_64 pip install --upgrade pip
-          # Force x86_64 wheels for numpy and matplotlib
           arch -x86_64 pip install numpy matplotlib
           arch -x86_64 pip install --upgrade pyinstaller
           if [ -f requirements.txt ]; then
@@ -46,7 +46,7 @@ jobs:
         run: |
           set -eux
           source .venv_x86_64/bin/activate
-          FONT_SRC=$(python3 -c "import matplotlib; import os; print(os.path.join(matplotlib.get_data_path(), 'fonts', 'ttf'))")
+          FONT_SRC=$(arch -x86_64 python3 -c "import matplotlib; import os; print(os.path.join(matplotlib.get_data_path(), 'fonts', 'ttf'))")
           mkdir -p assets/fonts
           cp -v $FONT_SRC/DejaVu*.ttf assets/fonts/ || true
 
