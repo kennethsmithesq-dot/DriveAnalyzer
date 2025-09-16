@@ -224,7 +224,8 @@ class MidiChordAnalyzer(tk.Tk):
             except Exception as e:
                 messagebox.showerror("Launch error", f"Failed to open embedded keyboard:\n{e}")
 
-        self.keyboard_btn = tk.Button(frame, text="Open Keyboard", command=open_keyboard, **btn_kwargs)
+        kb_label = "Keyboard" if is_mac else "Open Keyboard"
+        self.keyboard_btn = tk.Button(frame, text=kb_label, command=open_keyboard, **btn_kwargs)
         self.keyboard_btn.pack(side="left", padx=5)
 
         # Disabled until an analysis exists
