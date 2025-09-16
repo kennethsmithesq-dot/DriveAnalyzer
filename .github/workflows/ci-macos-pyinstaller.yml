@@ -1,4 +1,4 @@
-name: macOS PyInstaller Build (universal)
+name: macOS PyInstaller Build (x86_64)
 
 on:
   push:
@@ -8,13 +8,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-matrix:
-    name: Build (${{ matrix.arch }})
+  build-x86_64:
+    name: Build (x86_64)
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [ 'arm64', 'x86_64' ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,7 +21,6 @@ jobs:
           set -eux
           curl -LO https://www.python.org/ftp/python/3.11.8/python-3.11.8-macos11.pkg
           sudo installer -pkg python-3.11.8-macos11.pkg -target /
-          # Ensure /usr/local/bin is in PATH for python3 and pip3
           echo "/usr/local/bin" >> $GITHUB_PATH
           python3 --version
           which python3
@@ -34,321 +29,54 @@ jobs:
       - name: Install build deps
         run: |
           set -eux
-          # prepare a virtualenv so builds are isolated and logs are reproducible
-          python3 -m venv .venv
-          . .venv/bin/activate
-          # If a requirements.txt exists, install from it; otherwise install minimal deps
+          arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
+          source .venv_x86_64/bin/activate
+          arch -x86_64 pip install --upgrade pip
+          arch -x86_64 pip install --upgrade pyinstaller
           if [ -f requirements.txt ]; then
-            echo "Installing from requirements.txt"
-            if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              # Use Rosetta to run x86_64 Python if on Apple Silicon
-              arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
-              source .venv_x86_64/bin/activate
-              arch -x86_64 pip install --upgrade pip
-              arch -x86_64 pip install --upgrade pyinstaller
-              arch -x86_64 pip install -r requirements.txt
-            else
-              python3 -m venv .venv_arm64
-              . .venv_arm64/bin/activate
-              pip install --upgrade pip
-              pip install -r requirements.txt
-            fi
+            arch -x86_64 pip install -r requirements.txt
           else
-            echo "requirements.txt not found; installing minimal build deps"
-            if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
-              source .venv_x86_64/bin/activate
-              arch -x86_64 pip install --upgrade pip
-              arch -x86_64 pip install --upgrade pyinstaller
-              arch -x86_64 pip install reportlab music21 pillow mido pygame
-            else
-              python3 -m venv .venv_arm64
-              . .venv_arm64/bin/activate
-              pip install --upgrade pip
-              pip install --upgrade pyinstaller
-              pip install reportlab music21 pillow mido pygame
-            fi
+            arch -x86_64 pip install reportlab music21 pillow mido pygame
           fi
-          # record interpreter and platform for diagnostics
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            source .venv_x86_64/bin/activate
-            arch -x86_64 python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
-            rm -rf build dist *.spec || true
-          else
-            source .venv_arm64/bin/activate
-            python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
-            rm -rf build dist *.spec || true
-          fi
-          # Save list of installed packages for debugging missing-import issues (e.g., mido)
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            source .venv_x86_64/bin/activate || true
-          else
-            . .venv_arm64/bin/activate || true
-          fi
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            arch -x86_64 pip freeze > installed-packages.txt || true
-          else
-            pip freeze > installed-packages.txt || true
-          fi
+          arch -x86_64 python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
+          rm -rf build dist *.spec || true
+          arch -x86_64 pip freeze > installed-packages.txt || true
           ls -la > ls-root.txt || true
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (x86_64 onefile)
         run: |
           set -eux
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            source .venv_x86_64/bin/activate || true
-          else
-            . .venv_arm64/bin/activate || true
-          fi
-          echo "== PYINSTALLER: ONEDIR (smoke) BUILD ==" > build-one.log
-
-          # (Onedir build removed for clarity; only onefile build will be packaged and uploaded)
-          echo "Skipping onedir build; only onefile build will be packaged."
-
-          # Now produce the onefile build (this is the only build that will be packaged)
+          source .venv_x86_64/bin/activate
           echo "== PYINSTALLER: ONEFILE BUILD ==" > build-onefile.log
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            source .venv_x86_64/bin/activate
-            arch -x86_64 python3 -m PyInstaller --noconfirm --clean --onefile --target-architecture universal2 TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
-            mv dist/TEST dist/TEST-x86_64 || true
-          else
-            . .venv_arm64/bin/activate
-            python3 -m PyInstaller --noconfirm --clean --onefile --target-architecture universal2 TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
-            mv dist/TEST dist/TEST-arm64 || true
-          fi
-          cp build-onefile.log build-onefile-${{ matrix.arch }}.log || true
+          arch -x86_64 python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
+          mv dist/TEST dist/TEST-x86_64 || true
+          cp build-onefile.log build-onefile-x86_64.log || true
 
-      - name: Package arch artifact (tar.gz)
+      - name: Package artifact (tar.gz)
         run: |
           set -eux
-          # Only package the onefile binary
           mkdir -p out-dist
-          if [ -f dist/TEST-${{ matrix.arch }} ]; then
-            cp dist/TEST-${{ matrix.arch }} out-dist/TEST
-            tar -C out-dist -czf driveanalyzer-${{ matrix.arch }}.tar.gz .
-            ls -la driveanalyzer-${{ matrix.arch }}.tar.gz
+          if [ -f dist/TEST-x86_64 ]; then
+            cp dist/TEST-x86_64 out-dist/TEST
+            tar -C out-dist -czf driveanalyzer-x86_64.tar.gz .
+            ls -la driveanalyzer-x86_64.tar.gz
           else
-            echo "Warning: onefile binary not found for ${{ matrix.arch }}"
+            echo "Warning: onefile binary not found for x86_64"
             ls -la dist || true
           fi
 
-      - name: Upload arch artifact (tar.gz)
+      - name: Upload artifact (tar.gz)
         uses: actions/upload-artifact@v4
         with:
-          name: driveanalyzer-${{ matrix.arch }}
-          path: driveanalyzer-${{ matrix.arch }}.tar.gz
+          name: driveanalyzer-x86_64
+          path: driveanalyzer-x86_64.tar.gz
 
       - name: Upload build logs and diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: driveanalyzer-${{ matrix.arch }}-logs
+          name: driveanalyzer-x86_64-logs
           path: |
-            build-onefile-${{ matrix.arch }}.log
+            build-onefile-x86_64.log
             build-env.txt
             ls-root.txt
 
-  make-universal:
-    name: Create universal binary
-    needs: build-matrix
-    runs-on: macos-latest
-    steps:
-      - name: Download arm64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: driveanalyzer-arm64
-          path: ./artifacts/arm64
-
-      - name: Download x86_64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: driveanalyzer-x86_64
-          path: ./artifacts/x86_64
-        continue-on-error: true
-
-      - name: Download build logs for both arches
-        uses: actions/download-artifact@v4
-        with:
-          name: driveanalyzer-arm64-logs
-          path: ./artifacts/arm64/logs
-
-      - name: Download x86_64 logs (if present)
-        uses: actions/download-artifact@v4
-        with:
-          name: driveanalyzer-x86_64-logs
-          path: ./artifacts/x86_64/logs
-        continue-on-error: true
-
-      - name: Prepare files (extract and locate binaries)
-        run: |
-          set -eux
-          echo "Listing downloaded artifact roots..."
-          ls -la ./artifacts || true
-          echo "artifacts/arm64 content:"
-          ls -la ./artifacts/arm64 || true
-          echo "artifacts/x86_64 content:"
-          ls -la ./artifacts/x86_64 || true
-
-          # If the downloaded artifact is a tar.gz, extract it in place
-          for d in ./artifacts/arm64 ./artifacts/x86_64; do
-            if compgen -G "$d/*.tar.gz" > /dev/null; then
-              echo "Extracting archives in $d"
-              mkdir -p "$d"/extracted
-              for a in "$d"/*.tar.gz; do
-                echo "Extract $a"
-                tar -C "$d"/extracted -xzf "$a"
-              done
-            fi
-          done
-
-          echo "artifacts/arm64/extracted content:"
-          ls -la ./artifacts/arm64/extracted || true
-          echo "artifacts/x86_64/extracted content:"
-          ls -la ./artifacts/x86_64/extracted || true
-
-
-          # Always pick the largest Mach-O executable named TEST (PyInstaller onefile output)
-          find_largest_test() {
-            find "$1" -type f -name 'TEST*' -exec sh -c 'file "$0" | grep -q "Mach-O" && echo "$0"' {} \; | xargs -I{} ls -l {} | sort -k5 -nr | head -1 | awk '{print $9}'
-          }
-
-          ARM_BIN=$(find_largest_test ./artifacts/arm64)
-          X86_BIN=$(find_largest_test ./artifacts/x86_64)
-
-          echo "Resolved ARM_BIN=${ARM_BIN}"
-          echo "Resolved X86_BIN=${X86_BIN}"
-
-          # Validate that the found files are Mach-O and match expected archs
-          VALID_ARM=0
-          VALID_X86=0
-          if [ -n "$ARM_BIN" ] && [ -f "$ARM_BIN" ]; then
-            if file "$ARM_BIN" | grep -q "Mach-O.*arm64" || file "$ARM_BIN" | grep -q "Mach-O universal" ; then
-              VALID_ARM=1
-            fi
-          fi
-          if [ -n "$X86_BIN" ] && [ -f "$X86_BIN" ]; then
-            if file "$X86_BIN" | grep -q "Mach-O.*x86_64" || file "$X86_BIN" | grep -q "Mach-O universal" ; then
-              VALID_X86=1
-            fi
-          fi
-
-          echo "VALID_ARM=${VALID_ARM} VALID_X86=${VALID_X86}"
-
-          mkdir -p out
-          if [ -n "$ARM_BIN" ] && [ -f "$ARM_BIN" ]; then
-            cp "$ARM_BIN" out/TEST-arm64
-            ls -la out/TEST-arm64
-          else
-            echo "ARM binary not found" >&2
-          fi
-
-          if [ -n "$X86_BIN" ] && [ -f "$X86_BIN" ]; then
-            cp "$X86_BIN" out/TEST-x86_64
-            ls -la out/TEST-x86_64
-          else
-            echo "X86 binary not found" >&2
-          fi
-
-      - name: Create universal with lipo (if both present)
-        run: |
-          set -eux
-          ls -la out || true
-          echo "-- debug: binary info --"
-          if [ -f out/TEST-arm64 ]; then
-            echo "TEST-arm64 file:"; file out/TEST-arm64 || true
-            echo "TEST-arm64 size:"; ls -lh out/TEST-arm64 || true
-            echo "TEST-arm64 head:"; head -c 64 out/TEST-arm64 | xxd || true
-          else
-            echo "TEST-arm64 not present"
-          fi
-          if [ -f out/TEST-x86_64 ]; then
-            echo "TEST-x86_64 file:"; file out/TEST-x86_64 || true
-            echo "TEST-x86_64 size:"; ls -lh out/TEST-x86_64 || true
-            echo "TEST-x86_64 head:"; head -c 64 out/TEST-x86_64 | xxd || true
-          else
-            echo "TEST-x86_64 not present"
-          fi
-          # If either binary is already universal, just use it
-          if file out/TEST-x86_64 | grep -q 'universal'; then
-            cp out/TEST-x86_64 out/TEST-universal
-            chmod +x out/TEST-universal
-            echo "Copied already universal x86_64 binary as universal output"
-          elif file out/TEST-arm64 | grep -q 'universal'; then
-            cp out/TEST-arm64 out/TEST-universal
-            chmod +x out/TEST-universal
-            echo "Copied already universal arm64 binary as universal output"
-          elif [ -f out/TEST-arm64 ] && [ -f out/TEST-x86_64 ]; then
-            lipo -create out/TEST-x86_64 out/TEST-arm64 -output out/TEST-universal
-            chmod +x out/TEST-universal
-            echo "Created universal binary out/TEST-universal"
-          elif [ -f out/TEST-arm64 ]; then
-            cp out/TEST-arm64 out/TEST-universal
-            chmod +x out/TEST-universal
-            echo "Only arm64 available; using arm64 binary"
-          elif [ -f out/TEST-x86_64 ]; then
-            cp out/TEST-x86_64 out/TEST-universal
-            chmod +x out/TEST-universal
-            echo "Only x86_64 available; using x86_64 binary"
-          else
-            echo "No built binary found" >&2
-            exit 1
-          fi
-
-      - name: Package universal artifact (tar.gz)
-        run: |
-          set -eux
-          echo "Files before packaging:"
-          ls -la out || true
-          mkdir -p out/dist
-          if [ -f out/TEST-universal ]; then
-            cp out/TEST-universal out/dist/TEST
-          fi
-          if [ ! -f out/dist/TEST ]; then
-            echo "WARNING: packaged binary out/dist/TEST not found; producing diagnostics-only package" > out/dist/README.txt
-            echo "VALID_ARM=${VALID_ARM} VALID_X86=${VALID_X86}" >> out/dist/README.txt || true
-            echo "" >> out/dist/README.txt
-            echo "Contents of artifact directories:" >> out/dist/README.txt
-            ls -la ./artifacts || true >> out/dist/README.txt || true
-            ls -la ./artifacts/arm64 || true >> out/dist/README.txt || true
-            ls -la ./artifacts/x86_64 || true >> out/dist/README.txt || true
-            # don't exit here; continue to produce a package containing diagnostics
-          fi
-          tar -C out/dist -czf driveanalyzer-macos-universal.tar.gz .
-          ls -la driveanalyzer-macos-universal.tar.gz
-
-      - name: Collect per-arch artifacts and logs
-        run: |
-          set -eux
-          mkdir -p out/logs
-          # copy downloaded logs if present
-          cp -r ./artifacts/arm64/logs/* out/logs/ || true
-          cp -r ./artifacts/x86_64/logs/* out/logs/ || true
-          # copy per-arch tar.gz if present to workspace root for upload
-          cp ./artifacts/arm64/*.tar.gz ./driveanalyzer-arm64.tar.gz || true
-          cp ./artifacts/x86_64/*.tar.gz ./driveanalyzer-x86_64.tar.gz || true
-          ls -la out || true
-          ls -la out/logs || true
-          ls -la ./ || true
-
-      - name: Upload per-arch artifacts
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: driveanalyzer-per-arch
-          path: |
-            driveanalyzer-arm64.tar.gz
-            driveanalyzer-x86_64.tar.gz
-
-      - name: Upload logs and diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: driveanalyzer-logs
-          path: |
-            out/logs
-            artifacts/arm64/logs
-            artifacts/x86_64/logs
-
-      - name: Upload universal artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DriveAnalyzer-macos-universal
-          path: driveanalyzer-macos-universal.tar.gz
