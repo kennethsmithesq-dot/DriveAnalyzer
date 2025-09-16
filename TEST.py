@@ -187,8 +187,6 @@ class MidiChordAnalyzer(tk.Tk):
         frame = Frame(self, bg="#2b2b2b")
         frame.pack(pady=(top_pad, 10))
 
-        # ...existing code...
-
         # Button style logic
         if is_mac:
             btn_kwargs = {}
@@ -1830,52 +1828,29 @@ class GridWindow(tk.Toplevel):#
         self.canvas.update_idletasks()
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
         # Populate frozen left column with enharmonic alternatives and labels
-        try:
-            enh_map = {
-                'F#': 'F#/Gb',
-                'Db': 'Db/C#',
-                'Ab': 'Ab/G#',
-                'Eb': 'Eb/D#'
-            }
-            is_mac = platform.system() == "Darwin"
-            flat_photo = None
-            sharp_photo = None
-            if is_mac:
-                try:
-                    flat_img = Image.open(resource_path("assets/flat.png"))
-                    sharp_img = Image.open(resource_path("assets/sharp.png"))
-                    flat_img = flat_img.resize((25, 25), Image.LANCZOS)
-                    sharp_img = sharp_img.resize((25, 25), Image.LANCZOS)
-                    self._left_flat_photo = ImageTk.PhotoImage(flat_img)
-                    self._left_sharp_photo = ImageTk.PhotoImage(sharp_img)
-                    flat_photo = self._left_flat_photo
-                    sharp_photo = self._left_sharp_photo
-                except Exception as e:
-                    print("[GridWindow] Could not load flat/sharp images:", e)
-
-            for root, row in self.root_to_row.items():
-                y_center = self.PADDING + row * self.CELL_SIZE + self.CELL_SIZE // 2
-                label_raw = enh_map.get(root, root)
-                parts = label_raw.split('/')
-                if is_mac and (flat_photo or sharp_photo):
-                    # two-line layout for enharmonic pair
-                    if len(parts) == 2:
-                        ys = (y_center - 8, y_center + 8)
-                    else:
-                        ys = (y_center,)
-                    for i, part in enumerate(parts):
-                        y = ys[i] if i < len(ys) else y_center
-                        letter = part.replace('b', '').replace('#', '')
-                        self.left_canvas.create_text(left_col_width - 28, y, text=letter, anchor='e', font=("Segoe UI", 14))
-                        if '#' in part and sharp_photo:
-                            self.left_canvas.create_image(left_col_width - 8, y, image=sharp_photo, anchor='e')
-                        elif 'b' in part and flat_photo:
-                            self.left_canvas.create_image(left_col_width - 8, y, image=flat_photo, anchor='e')
-                else:
-                    label_text = label_raw.replace('b', '♭').replace('#', '♯')
-                    self.left_canvas.create_text(left_col_width - 8, y_center, text=label_text, anchor='e', font=("Segoe UI", 14))
-        except Exception:
-            pass
+        enh_map = {
+            'F#': 'F#/Gb',
+            'Db': 'Db/C#',
+            'Ab': 'Ab/G#',
+            'Eb': 'Eb/D#'
+        }
+        for root, row in self.root_to_row.items():
+            y = self.PADDING + row * self.CELL_SIZE + self.CELL_SIZE // 2
+            label_text = enh_map.get(root, root)
+            label_text = label_text.replace('b', '♭').replace('#', '♯')
+            # Use DejaVuSans when flats/sharps are present to ensure proper glyph rendering,
+            # otherwise keep Segoe UI for consistency with the rest of the UI.
+            if '♭' in label_text or '♯' in label_text:
+                font_choice = ("DejaVuSans", 14)
+            else:
+                font_choice = ("Segoe UI", 14)
+            # Enforce black text color; if something goes wrong, let it be visible in the log.
+            try:
+                self.left_canvas.create_text(left_col_width - 8, y, text=label_text, anchor='e', font=font_choice, fill="black")
+            except Exception as ex:
+                import traceback
+                print("[ERROR] Failed to create left-column label for root:", root, "label:", label_text)
+                traceback.print_exc()
         
         #Inside your GridWindow __init__ method or GUI setup:
  
@@ -2058,13 +2033,11 @@ class GridWindow(tk.Toplevel):#
         from reportlab.pdfgen import canvas as pdf_canvas
 
         import os, math
-        # Always use the bundled DejaVuSans.ttf from assets/fonts
-        font_path = resource_path(os.path.join('assets', 'fonts', 'DejaVuSans.ttf'))
+        font_path = resource_path(os.path.join('dejavu-fonts-ttf-2.37', 'ttf', 'DejaVuSans.ttf'))
         try:
             if os.path.exists(font_path):
                 pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
-        except Exception as e:
-            print(f"Warning: Could not register DejaVuSans font: {e}")
+        except Exception:
             # silent fallback to default fonts
             pass
 
