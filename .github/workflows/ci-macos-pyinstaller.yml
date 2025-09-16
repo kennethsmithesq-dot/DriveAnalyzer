@@ -43,9 +43,9 @@ jobs:
             if [ "${{ matrix.arch }}" = "x86_64" ]; then
               # Use Rosetta to run x86_64 Python if on Apple Silicon
               arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
-              . .venv_x86_64/bin/activate
-              pip install --upgrade pip
-              pip install -r requirements.txt
+              source .venv_x86_64/bin/activate
+              arch -x86_64 pip install --upgrade pip
+              arch -x86_64 pip install -r requirements.txt
             else
               python3 -m venv .venv_arm64
               . .venv_arm64/bin/activate
@@ -56,9 +56,9 @@ jobs:
             echo "requirements.txt not found; installing minimal build deps"
             if [ "${{ matrix.arch }}" = "x86_64" ]; then
               arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
-              . .venv_x86_64/bin/activate
-              pip install --upgrade pip
-              pip install pyinstaller reportlab music21 pillow mido pygame
+              source .venv_x86_64/bin/activate
+              arch -x86_64 pip install --upgrade pip
+              arch -x86_64 pip install pyinstaller reportlab music21 pillow mido pygame
             else
               python3 -m venv .venv_arm64
               . .venv_arm64/bin/activate
@@ -68,35 +68,39 @@ jobs:
           fi
           # record interpreter and platform for diagnostics
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            . .venv_x86_64/bin/activate
-            python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
+            source .venv_x86_64/bin/activate
+            arch -x86_64 python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
           else
             . .venv_arm64/bin/activate
             python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
           fi
           # Save list of installed packages for debugging missing-import issues (e.g., mido)
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            . .venv_x86_64/bin/activate || true
+            source .venv_x86_64/bin/activate || true
           else
             . .venv_arm64/bin/activate || true
           fi
-          pip freeze > installed-packages.txt || true
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            arch -x86_64 pip freeze > installed-packages.txt || true
+          else
+            pip freeze > installed-packages.txt || true
+          fi
           ls -la > ls-root.txt || true
 
       - name: Build with PyInstaller
         run: |
           set -eux
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            . .venv_x86_64/bin/activate || true
+            source .venv_x86_64/bin/activate || true
           else
             . .venv_arm64/bin/activate || true
           fi
           echo "== PYINSTALLER: ONEDIR (smoke) BUILD ==" > build-one.log
           # Run an onedir build first to collect diagnostics and ensure modules are bundled
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            . .venv_x86_64/bin/activate
+            source .venv_x86_64/bin/activate
             echo "Building x86_64 (using python.org universal2 under Rosetta)"
-            python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido >> build-one.log 2>&1 || true
+            arch -x86_64 python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido >> build-one.log 2>&1 || true
             mv dist/TEST dist/TEST-x86_64-onedir || true
             BIN_DIR="dist/TEST-x86_64-onedir"
           else
@@ -127,8 +131,8 @@ jobs:
           # Now produce the onefile build
           echo "== PYINSTALLER: ONEFILE BUILD ==" > build-onefile.log
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            . .venv_x86_64/bin/activate
-            python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
+            source .venv_x86_64/bin/activate
+            arch -x86_64 python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
             mv dist/TEST dist/TEST-x86_64 || true
           else
             . .venv_arm64/bin/activate
