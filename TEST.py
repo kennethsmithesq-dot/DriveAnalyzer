@@ -179,24 +179,28 @@ class MidiChordAnalyzer(tk.Tk):
         self.show_splash()
 
 
+
     def build_ui(self):
-        frame = Frame(self, bg="#2b2b2b")
-        frame.pack(pady=10)
-
-        # Detect if running on macOS
         is_mac = platform.system() == "Darwin"
+        # Add extra top padding for macOS
+        top_pad = 30 if is_mac else 10
+        frame = Frame(self, bg="#2b2b2b")
+        frame.pack(pady=(top_pad, 10))
 
+        # Button style logic
         if is_mac:
-            btn_kwargs = {}  # Use default button style on macOS
+            btn_kwargs = {}
+            disabled_fg = "#cccccc"
         else:
             btn_kwargs = {"bg": "#ff00ff", "fg": "#fff", "activebackground": "#ff33ff", "activeforeground": "#fff", "relief": "raised", "bd": 2, "font": ("Segoe UI", 10, "bold")}
+            disabled_fg = "black"
 
         tk.Button(frame, text="Load XML", command=self.load_music_file, **btn_kwargs).pack(side="left", padx=5)
         self.settings_btn = tk.Button(
             frame,
             text="Settings",
             command=self.open_settings,
-            disabledforeground="black" if not is_mac else None,
+            disabledforeground=disabled_fg,
             **btn_kwargs
         )
         self.settings_btn.pack(side="left", padx=5)
@@ -205,7 +209,7 @@ class MidiChordAnalyzer(tk.Tk):
             text="Show Grid",
             command=self.show_grid_window,
             state="disabled",
-            disabledforeground="black" if not is_mac else None,
+            disabledforeground=disabled_fg,
             **btn_kwargs
         )
         self.show_grid_btn.pack(side="left", padx=5)
@@ -229,7 +233,7 @@ class MidiChordAnalyzer(tk.Tk):
             text="Save Analysis",
             command=self.save_analysis_txt,
             state="disabled",
-            disabledforeground="black" if not is_mac else None,
+            disabledforeground=disabled_fg,
             **btn_kwargs
         )
         self.save_analysis_btn.pack(side="left", padx=5)
