@@ -1,8 +1,6 @@
 name: macOS PyInstaller Build (x86_64)
 
 on:
-  push:
-    branches: [ main, add/macos-ci-from-main ]
   pull_request:
     branches: [ main, add/macos-ci-from-main ]
   workflow_dispatch:
@@ -14,7 +12,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
 
       - name: Download and install python.org universal2 Python 3.11
         run: |
@@ -33,7 +30,7 @@ jobs:
           source .venv_x86_64/bin/activate
           arch -x86_64 pip install --upgrade pip
           # Force x86_64 wheels for numpy and matplotlib
-          arch -x86_64 pip install --platform macosx_10_9_x86_64 --only-binary=:all: numpy matplotlib
+          arch -x86_64 pip install numpy matplotlib
           arch -x86_64 pip install --upgrade pyinstaller
           if [ -f requirements.txt ]; then
             arch -x86_64 pip install -r requirements.txt
