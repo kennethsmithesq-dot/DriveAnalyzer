@@ -32,6 +32,8 @@ jobs:
           arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
           source .venv_x86_64/bin/activate
           arch -x86_64 pip install --upgrade pip
+          # Force x86_64 wheels for numpy and matplotlib
+          arch -x86_64 pip install --platform macosx_10_9_x86_64 --only-binary=:all: numpy matplotlib
           arch -x86_64 pip install --upgrade pyinstaller
           if [ -f requirements.txt ]; then
             arch -x86_64 pip install -r requirements.txt
