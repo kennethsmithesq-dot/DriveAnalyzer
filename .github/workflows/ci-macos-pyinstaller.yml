@@ -101,39 +101,11 @@ jobs:
             . .venv_arm64/bin/activate || true
           fi
           echo "== PYINSTALLER: ONEDIR (smoke) BUILD ==" > build-one.log
-          # Run an onedir build first to collect diagnostics and ensure modules are bundled
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            source .venv_x86_64/bin/activate
-            echo "Building x86_64 (using python.org universal2 under Rosetta)"
-            arch -x86_64 python3 -m PyInstaller --noconfirm --clean --onedir --target-architecture universal2 TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido >> build-one.log 2>&1 || true
-            mv dist/TEST dist/TEST-x86_64-onedir || true
-            BIN_DIR="dist/TEST-x86_64-onedir"
-          else
-            . .venv_arm64/bin/activate
-            echo "Building arm64 (using python.org universal2)"
-            python3 -m PyInstaller --noconfirm --clean --onedir --target-architecture universal2 TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido >> build-one.log 2>&1 || true
-            mv dist/TEST dist/TEST-arm64-onedir || true
-            BIN_DIR="dist/TEST-arm64-onedir"
-          fi
 
-          echo "-- onedir diagnostics --" > one-diagnostics.txt
-          ls -la "$BIN_DIR" >> one-diagnostics.txt 2>&1 || true
-          if [ -f "$BIN_DIR/TEST" ]; then
-            file "$BIN_DIR/TEST" >> one-diagnostics.txt 2>&1 || true
-            head -c 64 "$BIN_DIR/TEST" | xxd >> one-diagnostics.txt 2>&1 || true
-            # Try to run the bundled binary for a short time to collect stderr/stdout (best-effort)
-            ( ("$BIN_DIR/TEST" > run.stdout 2> run.stderr) & sleep 5; pkill -P $$ || true ) || true
-          else
-            echo "No TEST binary found in $BIN_DIR" >> one-diagnostics.txt || true
-          fi
+          # (Onedir build removed for clarity; only onefile build will be packaged and uploaded)
+          echo "Skipping onedir build; only onefile build will be packaged."
 
-          # Save the onedir build log for upload
-          cp build-one.log build-one-${{ matrix.arch }}.log || true
-          cp one-diagnostics.txt one-diagnostics-${{ matrix.arch }}.txt || true
-          cp run.stdout run.stdout-${{ matrix.arch }} || true
-          cp run.stderr run.stderr-${{ matrix.arch }} || true
-
-          # Now produce the onefile build
+          # Now produce the onefile build (this is the only build that will be packaged)
           echo "== PYINSTALLER: ONEFILE BUILD ==" > build-onefile.log
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
             source .venv_x86_64/bin/activate
@@ -149,12 +121,15 @@ jobs:
       - name: Package arch artifact (tar.gz)
         run: |
           set -eux
-          if [ -d dist ]; then
-            tar -C dist -czf driveanalyzer-${{ matrix.arch }}.tar.gz .
+          # Only package the onefile binary
+          mkdir -p out-dist
+          if [ -f dist/TEST-${{ matrix.arch }} ]; then
+            cp dist/TEST-${{ matrix.arch }} out-dist/TEST
+            tar -C out-dist -czf driveanalyzer-${{ matrix.arch }}.tar.gz .
             ls -la driveanalyzer-${{ matrix.arch }}.tar.gz
           else
-            echo "Warning: dist directory not found"
-            ls -la || true
+            echo "Warning: onefile binary not found for ${{ matrix.arch }}"
+            ls -la dist || true
           fi
 
       - name: Upload arch artifact (tar.gz)
@@ -168,11 +143,7 @@ jobs:
         with:
           name: driveanalyzer-${{ matrix.arch }}-logs
           path: |
-            build-one-${{ matrix.arch }}.log
             build-onefile-${{ matrix.arch }}.log
-            one-diagnostics-${{ matrix.arch }}.txt
-            run.stdout-${{ matrix.arch }}
-            run.stderr-${{ matrix.arch }}
             build-env.txt
             ls-root.txt
 
@@ -234,30 +205,14 @@ jobs:
           echo "artifacts/x86_64/extracted content:"
           ls -la ./artifacts/x86_64/extracted || true
 
-          # Try to find the binary at common locations: prefer files inside the extracted tree
-          # Use `find` + `file` to select the first Mach-O executable (avoids accidentally selecting the .tar.gz archive)
-          ARM_BIN=""
-          while IFS= read -r -d '' f; do
-            # skip obvious archive files
-            case "${f}" in
-              *.tar.gz|*.zip) continue ;;
-            esac
-            if file "${f}" | grep -qE 'Mach-O|universal binary'; then
-              ARM_BIN="${f}"
-              break
-            fi
-          done < <(find ./artifacts/arm64 -type f -print0 2>/dev/null)
 
-          X86_BIN=""
-          while IFS= read -r -d '' f; do
-            case "${f}" in
-              *.tar.gz|*.zip) continue ;;
-            esac
-            if file "${f}" | grep -qE 'Mach-O|universal binary'; then
-              X86_BIN="${f}"
-              break
-            fi
-          done < <(find ./artifacts/x86_64 -type f -print0 2>/dev/null)
+          # Always pick the largest Mach-O executable named TEST (PyInstaller onefile output)
+          find_largest_test() {
+            find "$1" -type f -name 'TEST*' -exec sh -c 'file "$0" | grep -q "Mach-O" && echo "$0"' {} \; | xargs -I{} ls -l {} | sort -k5 -nr | head -1 | awk '{print $9}'
+          }
+
+          ARM_BIN=$(find_largest_test ./artifacts/arm64)
+          X86_BIN=$(find_largest_test ./artifacts/x86_64)
 
           echo "Resolved ARM_BIN=${ARM_BIN}"
           echo "Resolved X86_BIN=${X86_BIN}"
