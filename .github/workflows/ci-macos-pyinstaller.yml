@@ -58,6 +58,8 @@ jobs:
           arch -x86_64 python3 -m PyInstaller --noconfirm --clean --onefile TEST.py \
             --add-data assets/title.png:. \
             --add-data assets/ico.png:. \
+            --add-data assets/flat.png:. \
+            --add-data assets/sharp.png:. \
             --add-data assets/fonts:assets/fonts \
             --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-onefile.log 2>&1 || true
           mv dist/TEST dist/TEST-x86_64 || true
