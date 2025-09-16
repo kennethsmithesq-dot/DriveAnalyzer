@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, Text, BooleanVar, Frame, Label
+import platform
 from PIL import Image, ImageDraw, ImageTk
 import mido
 import sys
@@ -177,19 +178,25 @@ class MidiChordAnalyzer(tk.Tk):
         self.build_ui()
         self.show_splash()
 
-    def build_ui(self):
 
+    def build_ui(self):
         frame = Frame(self, bg="#2b2b2b")
         frame.pack(pady=10)
 
-        btn_kwargs = {"bg": "#ff00ff", "fg": "#fff", "activebackground": "#ff33ff", "activeforeground": "#fff", "relief": "raised", "bd": 2, "font": ("Segoe UI", 10, "bold")}
+        # Detect if running on macOS
+        is_mac = platform.system() == "Darwin"
+
+        if is_mac:
+            btn_kwargs = {}  # Use default button style on macOS
+        else:
+            btn_kwargs = {"bg": "#ff00ff", "fg": "#fff", "activebackground": "#ff33ff", "activeforeground": "#fff", "relief": "raised", "bd": 2, "font": ("Segoe UI", 10, "bold")}
 
         tk.Button(frame, text="Load XML", command=self.load_music_file, **btn_kwargs).pack(side="left", padx=5)
         self.settings_btn = tk.Button(
             frame,
             text="Settings",
             command=self.open_settings,
-            disabledforeground="black",
+            disabledforeground="black" if not is_mac else None,
             **btn_kwargs
         )
         self.settings_btn.pack(side="left", padx=5)
@@ -198,7 +205,7 @@ class MidiChordAnalyzer(tk.Tk):
             text="Show Grid",
             command=self.show_grid_window,
             state="disabled",
-            disabledforeground="black",
+            disabledforeground="black" if not is_mac else None,
             **btn_kwargs
         )
         self.show_grid_btn.pack(side="left", padx=5)
@@ -222,7 +229,7 @@ class MidiChordAnalyzer(tk.Tk):
             text="Save Analysis",
             command=self.save_analysis_txt,
             state="disabled",
-            disabledforeground="black",
+            disabledforeground="black" if not is_mac else None,
             **btn_kwargs
         )
         self.save_analysis_btn.pack(side="left", padx=5)
