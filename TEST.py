@@ -2024,11 +2024,13 @@ class GridWindow(tk.Toplevel):#
         from reportlab.pdfgen import canvas as pdf_canvas
 
         import os, math
-        font_path = resource_path(os.path.join('dejavu-fonts-ttf-2.37', 'ttf', 'DejaVuSans.ttf'))
+        # Always use the bundled DejaVuSans.ttf from assets/fonts
+        font_path = resource_path(os.path.join('assets', 'fonts', 'DejaVuSans.ttf'))
         try:
             if os.path.exists(font_path):
                 pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
-        except Exception:
+        except Exception as e:
+            print(f"Warning: Could not register DejaVuSans font: {e}")
             # silent fallback to default fonts
             pass
 
