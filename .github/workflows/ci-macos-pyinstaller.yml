@@ -78,9 +78,6 @@ jobs:
             source .venv_arm64/bin/activate
             python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
             rm -rf build dist *.spec || true
-          else
-            . .venv_arm64/bin/activate
-            python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
           fi
           # Save list of installed packages for debugging missing-import issues (e.g., mido)
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
