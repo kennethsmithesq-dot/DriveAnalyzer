@@ -19,10 +19,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+
+      - name: Download and install python.org universal2 Python 3.11
+        run: |
+          set -eux
+          curl -LO https://www.python.org/ftp/python/3.11.8/python-3.11.8-macos11.pkg
+          sudo installer -pkg python-3.11.8-macos11.pkg -target /
+          # Ensure /usr/local/bin is in PATH for python3 and pip3
+          echo "/usr/local/bin" >> $GITHUB_PATH
+          python3 --version
+          which python3
+          python3 -c "import sys; print(sys.executable)"
 
       - name: Install build deps
         run: |
@@ -34,41 +41,67 @@ jobs:
           if [ -f requirements.txt ]; then
             echo "Installing from requirements.txt"
             if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              # try installing under Rosetta if available
-              arch -x86_64 bash -lc ". .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
+              # Use Rosetta to run x86_64 Python if on Apple Silicon
+              arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
+              . .venv_x86_64/bin/activate
+              pip install --upgrade pip
+              pip install -r requirements.txt
             else
+              python3 -m venv .venv_arm64
+              . .venv_arm64/bin/activate
               pip install --upgrade pip
               pip install -r requirements.txt
             fi
           else
             echo "requirements.txt not found; installing minimal build deps"
             if [ "${{ matrix.arch }}" = "x86_64" ]; then
-              arch -x86_64 bash -lc ". .venv/bin/activate && pip install --upgrade pip && pip install pyinstaller reportlab music21 pillow mido pygame"
+              arch -x86_64 /usr/local/bin/python3 -m venv .venv_x86_64
+              . .venv_x86_64/bin/activate
+              pip install --upgrade pip
+              pip install pyinstaller reportlab music21 pillow mido pygame
             else
+              python3 -m venv .venv_arm64
+              . .venv_arm64/bin/activate
               pip install --upgrade pip
               pip install pyinstaller reportlab music21 pillow mido pygame
             fi
           fi
           # record interpreter and platform for diagnostics
-          python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            . .venv_x86_64/bin/activate
+            python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
+          else
+            . .venv_arm64/bin/activate
+            python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env.txt || true
+          fi
           # Save list of installed packages for debugging missing-import issues (e.g., mido)
-          . .venv/bin/activate || true
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            . .venv_x86_64/bin/activate || true
+          else
+            . .venv_arm64/bin/activate || true
+          fi
           pip freeze > installed-packages.txt || true
           ls -la > ls-root.txt || true
 
       - name: Build with PyInstaller
         run: |
           set -eux
-          . .venv/bin/activate || true
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            . .venv_x86_64/bin/activate || true
+          else
+            . .venv_arm64/bin/activate || true
+          fi
           echo "== PYINSTALLER: ONEDIR (smoke) BUILD ==" > build-one.log
           # Run an onedir build first to collect diagnostics and ensure modules are bundled
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            echo "Building x86_64 (attempt under Rosetta if available)"
-            arch -x86_64 bash -lc ". .venv/bin/activate && python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido" >> build-one.log 2>&1 || true
+            . .venv_x86_64/bin/activate
+            echo "Building x86_64 (using python.org universal2 under Rosetta)"
+            python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido >> build-one.log 2>&1 || true
             mv dist/TEST dist/TEST-x86_64-onedir || true
             BIN_DIR="dist/TEST-x86_64-onedir"
           else
-            echo "Building arm64"
+            . .venv_arm64/bin/activate
+            echo "Building arm64 (using python.org universal2)"
             python3 -m PyInstaller --noconfirm --clean --onedir TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido >> build-one.log 2>&1 || true
             mv dist/TEST dist/TEST-arm64-onedir || true
             BIN_DIR="dist/TEST-arm64-onedir"
@@ -94,9 +127,11 @@ jobs:
           # Now produce the onefile build
           echo "== PYINSTALLER: ONEFILE BUILD ==" > build-onefile.log
           if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            arch -x86_64 bash -lc ". .venv/bin/activate && python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns" >> build-onefile.log 2>&1 || true
+            . .venv_x86_64/bin/activate
+            python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
             mv dist/TEST dist/TEST-x86_64 || true
           else
+            . .venv_arm64/bin/activate
             python3 -m PyInstaller --noconfirm --clean --onefile TEST.py --add-data assets/title.png:. --add-data assets/ico.png:. --add-data assets/fonts:assets/fonts --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon myicon.icns >> build-onefile.log 2>&1 || true
             mv dist/TEST dist/TEST-arm64 || true
           fi
