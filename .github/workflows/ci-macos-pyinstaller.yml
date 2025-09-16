@@ -312,7 +312,16 @@ jobs:
           else
             echo "TEST-x86_64 not present"
           fi
-          if [ -f out/TEST-arm64 ] && [ -f out/TEST-x86_64 ]; then
+          # If either binary is already universal, just use it
+          if file out/TEST-x86_64 | grep -q 'universal'; then
+            cp out/TEST-x86_64 out/TEST-universal
+            chmod +x out/TEST-universal
+            echo "Copied already universal x86_64 binary as universal output"
+          elif file out/TEST-arm64 | grep -q 'universal'; then
+            cp out/TEST-arm64 out/TEST-universal
+            chmod +x out/TEST-universal
+            echo "Copied already universal arm64 binary as universal output"
+          elif [ -f out/TEST-arm64 ] && [ -f out/TEST-x86_64 ]; then
             lipo -create out/TEST-x86_64 out/TEST-arm64 -output out/TEST-universal
             chmod +x out/TEST-universal
             echo "Created universal binary out/TEST-universal"
