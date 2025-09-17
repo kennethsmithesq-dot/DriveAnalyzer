@@ -50,46 +50,49 @@ jobs:
           mkdir -p assets/fonts
           cp -v $FONT_SRC/DejaVu*.ttf assets/fonts/ || true
 
-      - name: Build with PyInstaller (x86_64 onefile)
+      - name: Build with PyInstaller (x86_64 app bundle)
         run: |
           set -eux
           source .venv_x86_64/bin/activate
-          echo "== PYINSTALLER: ONEFILE BUILD ==" > build-onefile.log
-          arch -x86_64 python3 -m PyInstaller --noconfirm --clean --onefile TEST.py \
+          echo "== PYINSTALLER: APP BUNDLE BUILD ==" > build-app.log
+          # Remove --onefile so PyInstaller creates a .app bundle.
+          # Use --name to set the app name and --windowed for GUI behaviour (no console).
+          arch -x86_64 python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
             --add-data assets/title.png:. \
             --add-data assets/ico.png:. \
             --add-data assets/flat.png:. \
             --add-data assets/sharp.png:. \
             --add-data assets/fonts:assets/fonts \
-            --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-onefile.log 2>&1 || true
-          mv dist/TEST dist/TEST-x86_64 || true
-          cp build-onefile.log build-onefile-x86_64.log || true
+            --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app.log 2>&1 || true
+          # Ensure the produced .app exists and set permissions just in case
+          if [ -d dist/DriveAnalyzer.app ]; then
+            chmod -R a+rX dist/DriveAnalyzer.app || true
+          fi
+          cp build-app.log build-app-x86_64.log || true
 
-      - name: Package artifact (tar.gz)
+      - name: Package artifact (zip .app)
         run: |
           set -eux
-          mkdir -p out-dist
-          if [ -f dist/TEST-x86_64 ]; then
-            cp dist/TEST-x86_64 out-dist/TEST
-            tar -C out-dist -czf driveanalyzer-x86_64.tar.gz .
-            ls -la driveanalyzer-x86_64.tar.gz
+          if [ -d dist/DriveAnalyzer.app ]; then
+            # Use ditto to create a zip preserving macOS resource forks and metadata
+            ditto -c -k --sequesterRsrc --keepParent dist/DriveAnalyzer.app driveanalyzer-x86_64.app.zip
+            ls -la driveanalyzer-x86_64.app.zip
           else
-            echo "Warning: onefile binary not found for x86_64"
+            echo "Warning: .app bundle not found"
             ls -la dist || true
           fi
 
-      - name: Upload artifact (tar.gz)
+      - name: Upload artifact (.app zip)
         uses: actions/upload-artifact@v4
         with:
-          name: driveanalyzer-x86_64
-          path: driveanalyzer-x86_64.tar.gz
+          name: driveanalyzer-x86_64-app
+          path: driveanalyzer-x86_64.app.zip
 
       - name: Upload build logs and diagnostics
         uses: actions/upload-artifact@v4
         with:
           name: driveanalyzer-x86_64-logs
           path: |
-            build-onefile-x86_64.log
+            build-app-x86_64.log
             build-env.txt
             ls-root.txt
-
