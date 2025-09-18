@@ -262,14 +262,18 @@ jobs:
           EXEC_NAME=""
           INFO_PLIST="x86_app/DriveAnalyzer.app/Contents/Info.plist"
           if [ -f "$INFO_PLIST" ]; then
-            EXEC_NAME=$(defaults read "$(pwd)/$INFO_PLIST" CFBundleExecutable 2>/dev/null || true)
-            echo "Executable name from Info.plist: $EXEC_NAME"
+            # Use plutil to extract the executable name from Info.plist (more reliable than defaults read)
+            EXEC_NAME=$(plutil -extract CFBundleExecutable raw "$INFO_PLIST" 2>/dev/null || true)
+            if [ -n "$EXEC_NAME" ]; then
+              echo "Executable name from Info.plist: $EXEC_NAME"
+            fi
           fi
           
           # If that fails, find the first executable file in the MacOS directory
           if [ -z "$EXEC_NAME" ]; then
             echo "Falling back to directory listing to find executable"
-            X86_EXEC=$(find "$X86_MACOS_DIR" -type f -perm +111 | head -1)
+            # Use modern find syntax for executable files
+            X86_EXEC=$(find "$X86_MACOS_DIR" -type f -perm /111 | head -1)
             if [ -z "$X86_EXEC" ]; then
               # Final fallback: just get the first file 
               X86_EXEC=$(find "$X86_MACOS_DIR" -type f | head -1)
@@ -360,7 +364,7 @@ jobs:
             INFO_PLIST="DriveAnalyzer.app/Contents/Info.plist"
             if [ -f "$INFO_PLIST" ]; then
               echo "=== Info.plist verification ==="
-              defaults read "$(pwd)/$INFO_PLIST" CFBundleExecutable || true
+              plutil -extract CFBundleExecutable raw "$INFO_PLIST" 2>/dev/null || true
               plutil -lint "$INFO_PLIST" || true
             fi
           fi
