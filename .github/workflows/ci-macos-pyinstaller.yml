@@ -258,20 +258,30 @@ jobs:
           echo "=== arm64 MacOS contents ==="
           ls -la "$ARM64_MACOS_DIR"
           
-          # Get the first executable file from x86_64 app (should be the main executable)
-          X86_EXEC=$(find "$X86_MACOS_DIR" -type f -perm +111 | head -1)
-          if [ -z "$X86_EXEC" ]; then
-            # Fallback: just get the first file 
-            X86_EXEC=$(find "$X86_MACOS_DIR" -type f | head -1)
+          # Try to get the executable name from the Info.plist first
+          EXEC_NAME=""
+          INFO_PLIST="x86_app/DriveAnalyzer.app/Contents/Info.plist"
+          if [ -f "$INFO_PLIST" ]; then
+            EXEC_NAME=$(defaults read "$(pwd)/$INFO_PLIST" CFBundleExecutable 2>/dev/null || true)
+            echo "Executable name from Info.plist: $EXEC_NAME"
           fi
           
-          if [ -z "$X86_EXEC" ]; then
-            echo "Error: No executable found in x86_64 app"
-            exit 1
+          # If that fails, find the first executable file in the MacOS directory
+          if [ -z "$EXEC_NAME" ]; then
+            echo "Falling back to directory listing to find executable"
+            X86_EXEC=$(find "$X86_MACOS_DIR" -type f -perm +111 | head -1)
+            if [ -z "$X86_EXEC" ]; then
+              # Final fallback: just get the first file 
+              X86_EXEC=$(find "$X86_MACOS_DIR" -type f | head -1)
+            fi
+            
+            if [ -z "$X86_EXEC" ]; then
+              echo "Error: No executable found in x86_64 app"
+              exit 1
+            fi
+            
+            EXEC_NAME=$(basename "$X86_EXEC")
           fi
-          
-          # Extract the executable name
-          EXEC_NAME=$(basename "$X86_EXEC")
           echo "Detected executable name: $EXEC_NAME"
           
           # Set paths for both architecture executables
@@ -335,12 +345,24 @@ jobs:
           cd verify_universal
           ditto -x -k ../driveanalyzer-universal.app.zip .
           
+          # Verify the app structure
+          echo "=== Universal app structure ==="
+          ls -la DriveAnalyzer.app/Contents/
+          
           # Find and verify the executable
           UNIVERSAL_EXEC=$(find DriveAnalyzer.app/Contents/MacOS -type f | head -1)
           if [ -n "$UNIVERSAL_EXEC" ]; then
             echo "=== Final verification: Universal app executable ==="
             file "$UNIVERSAL_EXEC"
             lipo -info "$UNIVERSAL_EXEC"
+            
+            # Verify the Info.plist is still valid
+            INFO_PLIST="DriveAnalyzer.app/Contents/Info.plist"
+            if [ -f "$INFO_PLIST" ]; then
+              echo "=== Info.plist verification ==="
+              defaults read "$(pwd)/$INFO_PLIST" CFBundleExecutable || true
+              plutil -lint "$INFO_PLIST" || true
+            fi
           fi
 
       - name: Upload universal artifact
