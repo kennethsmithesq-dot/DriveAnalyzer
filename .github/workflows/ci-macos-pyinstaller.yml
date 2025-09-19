@@ -239,10 +239,10 @@ jobs:
           rm -f "$UNIVERSAL_APP"/Contents/CodeResources || true
 
           # Build union of regular files (relative paths without leading ./)
-          FILES=$( (cd "$X86_APP" && find . -type f 2>/dev/null) || true; (cd "$ARM_APP" && find . -type f 2>/dev/null) || true ) | sed 's|^\./||' | sort -u
+          FILES=$( { (cd "$X86_APP" && find . -type f 2>/dev/null) || true; (cd "$ARM_APP" && find . -type f 2>/dev/null) || true; } | sed 's|^\./||' | sort -u )
 
           # Helper to merge or copy files robustly
-          while IFS= read -r rel || [ -n "$rel" ]; do
+          printf '%s\n' "$FILES" | while IFS= read -r rel || [ -n "$rel" ]; do
             [ -z "$rel" ] && continue
             src_a="$X86_APP/$rel"
             src_b="$ARM_APP/$rel"
@@ -268,9 +268,7 @@ jobs:
               echo "No file for $rel; skipping"
             fi
             chmod a+rX "$dst" || true
-          done <<EOF
-$FILES
-EOF
+          done
 
           chmod -R a+rX "$UNIVERSAL_APP" || true
           find "$UNIVERSAL_APP" -type f -maxdepth 4 -exec ls -l {} \; || true
