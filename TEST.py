@@ -26,7 +26,7 @@ def resource_path(relative_path: str) -> str:
     base_path = getattr(sys, "_MEIPASS", os.path.abspath(os.path.dirname(__file__)))
     return os.path.join(base_path, relative_path)
 
-# Marker symbols for chord analysis
+# Marker symbol for chord analysis
 CLEAN_STACK_SYMBOL = "✅"
 ROOT2_SYMBOL = "²"
 ROOT3_SYMBOL = "³"
