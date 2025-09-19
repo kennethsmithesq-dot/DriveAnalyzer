@@ -191,3 +191,112 @@ jobs:
             build-app-arm64.log
             build-env-arm64.txt
             ls-root-arm64.txt
+
+  create-universal:
+    name: Create Universal2 (.app) from x86_64 + arm64 builds
+    needs: [build-x86_64, build-arm64]
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download x86_64 app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: driveanalyzer-x86_64-app
+          path: artifacts/x86_64
+
+      - name: Download arm64 app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: driveanalyzer-arm64-app
+          path: artifacts/arm64
+
+      - name: Unzip apps
+        run: |
+          set -eux
+          mkdir -p work/x86_64 work/arm64 work/universal
+          unzip -q artifacts/x86_64/driveanalyzer-x86_64.app.zip -d work/x86_64
+          unzip -q artifacts/arm64/driveanalyzer-arm64.app.zip -d work/arm64
+          ls -la work/x86_64 || true
+          ls -la work/arm64 || true
+
+      - name: Merge Mach-O binaries into universal using lipo
+        run: |
+          set -eux
+          X86_APP=$(find work/x86_64 -name "DriveAnalyzer.app" -maxdepth 3 -print -quit)
+          ARM_APP=$(find work/arm64 -name "DriveAnalyzer.app" -maxdepth 3 -print -quit)
+          if [ -z "$X86_APP" ] || [ -z "$ARM_APP" ]; then
+            echo "One of the .app bundles was not found:"
+            echo "x86: $X86_APP"
+            echo "arm: $ARM_APP"
+            ls -R work || true
+            exit 1
+          fi
+          UNIVERSAL_APP=work/universal/DriveAnalyzer.app
+          cp -R "$ARM_APP" "$UNIVERSAL_APP"
+          rm -rf "$UNIVERSAL_APP"/Contents/_CodeSignature || true
+          rm -f "$UNIVERSAL_APP"/Contents/CodeResources || true
+
+          # Build union of regular files (relative paths without leading ./)
+          FILES=$( (cd "$X86_APP" && find . -type f 2>/dev/null) || true; (cd "$ARM_APP" && find . -type f 2>/dev/null) || true ) | sed 's|^\./||' | sort -u
+
+          # Helper to merge or copy files robustly
+          while IFS= read -r rel || [ -n "$rel" ]; do
+            [ -z "$rel" ] && continue
+            src_a="$X86_APP/$rel"
+            src_b="$ARM_APP/$rel"
+            dst="$UNIVERSAL_APP/$rel"
+            mkdir -p "$(dirname "$dst")"
+            if [ -f "$src_a" ] && [ -f "$src_b" ]; then
+              # If both are Mach-O binaries, use lipo to create a universal binary
+              if file "$src_a" | grep -qi 'Mach-O' && file "$src_b" | grep -qi 'Mach-O'; then
+                echo "Merging Mach-O $rel -> universal"
+                /usr/bin/lipo -create "$src_a" "$src_b" -output "$dst"
+              else
+                # Not both Mach-O: prefer arm64 blob (src_b), fallback to x86 (src_a)
+                echo "Both files exist but not Mach-O: copying arm64 $rel"
+                cp -p "$src_b" "$dst"
+              fi
+            elif [ -f "$src_b" ]; then
+              echo "Copying arm64 file $rel"
+              cp -p "$src_b" "$dst"
+            elif [ -f "$src_a" ]; then
+              echo "Copying x86 file $rel"
+              cp -p "$src_a" "$dst"
+            else
+              echo "No file for $rel; skipping"
+            fi
+            chmod a+rX "$dst" || true
+          done <<EOF
+$FILES
+EOF
+
+          chmod -R a+rX "$UNIVERSAL_APP" || true
+          find "$UNIVERSAL_APP" -type f -maxdepth 4 -exec ls -l {} \; || true
+
+      - name: Package universal app into zip
+        run: |
+          set -eux
+          cd work/universal
+          if [ -d DriveAnalyzer.app ]; then
+            ditto -c -k --sequesterRsrc --keepParent DriveAnalyzer.app driveanalyzer-universal.app.zip
+            ls -la driveanalyzer-universal.app.zip
+          else
+            echo "Universal .app not found"
+            ls -la
+            exit 1
+          fi
+
+      - name: Upload universal artifact (.app zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-universal-app
+          path: work/universal/driveanalyzer-universal.app.zip
+
+      - name: Upload merge logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: driveanalyzer-universal-logs
+          path: |
+            work/universal/* || true
