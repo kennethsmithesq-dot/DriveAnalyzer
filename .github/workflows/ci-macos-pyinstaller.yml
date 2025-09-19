@@ -1,4 +1,4 @@
-name: macOS PyInstaller Build (x86_64 + arm64)
+name: macOS PyInstaller Build (x86_64)
 
 on:
   pull_request:
@@ -49,13 +49,14 @@ jobs:
           FONT_SRC=$(arch -x86_64 python3 -c "import matplotlib; import os; print(os.path.join(matplotlib.get_data_path(), 'fonts', 'ttf'))")
           mkdir -p assets/fonts
           cp -v $FONT_SRC/DejaVu*.ttf assets/fonts/ || true
-          ls -la assets/fonts || true
 
       - name: Build with PyInstaller (x86_64 app bundle)
         run: |
           set -eux
           source .venv_x86_64/bin/activate
           echo "== PYINSTALLER: APP BUNDLE BUILD ==" > build-app.log
+          # Remove --onefile so PyInstaller creates a .app bundle.
+          # Use --name to set the app name and --windowed for GUI behaviour (no console).
           arch -x86_64 python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
             --add-data assets/title.png:. \
             --add-data assets/ico.png:. \
@@ -63,6 +64,7 @@ jobs:
             --add-data assets/sharp.png:. \
             --add-data assets/fonts:assets/fonts \
             --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app.log 2>&1 || true
+          # Ensure the produced .app exists and set permissions just in case
           if [ -d dist/DriveAnalyzer.app ]; then
             chmod -R a+rX dist/DriveAnalyzer.app || true
           fi
@@ -72,6 +74,7 @@ jobs:
         run: |
           set -eux
           if [ -d dist/DriveAnalyzer.app ]; then
+            # Use ditto to create a zip preserving macOS resource forks and metadata
             ditto -c -k --sequesterRsrc --keepParent dist/DriveAnalyzer.app driveanalyzer-x86_64.app.zip
             ls -la driveanalyzer-x86_64.app.zip
           else
@@ -93,301 +96,3 @@ jobs:
             build-app-x86_64.log
             build-env.txt
             ls-root.txt
-
-  build-arm64:
-    name: Build (arm64)
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Ensure runner is Apple Silicon (arm64)
-        run: |
-          set -eux
-          uname -m
-          python3 -c "import platform; print(platform.machine())"
-          if [ "$(uname -m)" != "arm64" ]; then
-            echo "This job requires an Apple Silicon (arm64) runner. Failing to avoid accidental x86 execution."
-            exit 1
-          fi
-
-      - name: Download and install python.org universal2 Python 3.11
-        run: |
-          set -eux
-          curl -LO https://www.python.org/ftp/python/3.11.8/python-3.11.8-macos11.pkg
-          sudo installer -pkg python-3.11.8-macos11.pkg -target /
-          echo "/usr/local/bin" >> $GITHUB_PATH
-          python3 --version
-          which python3
-          python3 -c "import sys; print(sys.executable)"
-
-      - name: Install build deps (arm64/native)
-        run: |
-          set -eux
-          rm -rf .venv_arm64
-          /usr/local/bin/python3 -m venv .venv_arm64
-          source .venv_arm64/bin/activate
-          pip install --upgrade pip
-          pip install numpy matplotlib
-          pip install --upgrade pyinstaller
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          else
-            pip install reportlab music21 pillow mido pygame
-          fi
-          python3 -c "import sys,platform; print(sys.executable); print(platform.machine())" > build-env-arm64.txt || true
-          rm -rf build dist *.spec || true
-          pip freeze > installed-packages-arm64.txt || true
-          ls -la > ls-root-arm64.txt || true
-
-      - name: Copy DejaVu fonts to assets/fonts
-        run: |
-          set -eux
-          source .venv_arm64/bin/activate
-          FONT_SRC=$(python3 -c "import matplotlib; import os; print(os.path.join(matplotlib.get_data_path(), 'fonts', 'ttf'))")
-          mkdir -p assets/fonts
-          cp -v $FONT_SRC/DejaVu*.ttf assets/fonts/ || true
-          ls -la assets/fonts || true
-
-      - name: Build with PyInstaller (arm64 app bundle)
-        run: |
-          set -eux
-          source .venv_arm64/bin/activate
-          echo "== PYINSTALLER: ARM64 APP BUNDLE BUILD ==" > build-app-arm64.log
-          python3 -m PyInstaller --noconfirm --clean --windowed --name DriveAnalyzer TEST.py \
-            --add-data assets/title.png:. \
-            --add-data assets/ico.png:. \
-            --add-data assets/flat.png:. \
-            --add-data assets/sharp.png:. \
-            --add-data assets/fonts:assets/fonts \
-            --hidden-import=mido --hidden-import=mido.backends.rtmidi --collect-all mido --icon assets/myicon.icns >> build-app-arm64.log 2>&1 || true
-          if [ -d dist/DriveAnalyzer.app ]; then
-            chmod -R a+rX dist/DriveAnalyzer.app || true
-          fi
-          cp build-app-arm64.log build-app-arm64.log || true
-
-      - name: Package artifact (zip .app)
-        run: |
-          set -eux
-          if [ -d dist/DriveAnalyzer.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent dist/DriveAnalyzer.app driveanalyzer-arm64.app.zip
-            ls -la driveanalyzer-arm64.app.zip
-          else
-            echo "Warning: .app bundle not found"
-            ls -la dist || true
-          fi
-
-      - name: Upload artifact (.app zip)
-        uses: actions/upload-artifact@v4
-        with:
-          name: driveanalyzer-arm64-app
-          path: driveanalyzer-arm64.app.zip
-
-      - name: Upload build logs and diagnostics (arm64)
-        uses: actions/upload-artifact@v4
-        with:
-          name: driveanalyzer-arm64-logs
-          path: |
-            build-app-arm64.log
-            build-env-arm64.txt
-            ls-root-arm64.txt
-
-  create-universal:
-    name: Create Universal2 (.app) from x86_64 + arm64 builds
-    needs: [build-x86_64, build-arm64]
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download x86_64 app artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: driveanalyzer-x86_64-app
-          path: artifacts/x86_64
-
-      - name: Download arm64 app artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: driveanalyzer-arm64-app
-          path: artifacts/arm64
-
-      - name: Unzip apps
-        run: |
-          set -eux
-          mkdir -p work/x86_64 work/arm64 work/universal
-          unzip -q artifacts/x86_64/driveanalyzer-x86_64.app.zip -d work/x86_64
-          unzip -q artifacts/arm64/driveanalyzer-arm64.app.zip -d work/arm64
-          ls -la work/x86_64 || true
-          ls -la work/arm64 || true
-
-      - name: Merge Mach-O binaries into universal using lipo
-        run: |
-          set -eux
-          MERGE_LOG=work/universal/merge.log
-          mkdir -p work/universal
-          echo "Merge run at $(date)" > "$MERGE_LOG"
-          X86_APP=$(find work/x86_64 -name "DriveAnalyzer.app" -maxdepth 3 -print -quit)
-          ARM_APP=$(find work/arm64 -name "DriveAnalyzer.app" -maxdepth 3 -print -quit)
-          echo "x86 app: $X86_APP" >> "$MERGE_LOG"
-          echo "arm app: $ARM_APP" >> "$MERGE_LOG"
-          if [ -z "$X86_APP" ] || [ -z "$ARM_APP" ]; then
-            echo "One of the .app bundles was not found:" | tee -a "$MERGE_LOG"
-            echo "x86: $X86_APP" | tee -a "$MERGE_LOG"
-            echo "arm: $ARM_APP" | tee -a "$MERGE_LOG"
-            ls -R work || true
-            exit 1
-          fi
-          UNIVERSAL_APP=work/universal/DriveAnalyzer.app
-          cp -R "$ARM_APP" "$UNIVERSAL_APP"
-          rm -rf "$UNIVERSAL_APP"/Contents/_CodeSignature || true
-          rm -f "$UNIVERSAL_APP"/Contents/CodeResources || true
-
-          # Build union of regular files (relative paths without leading ./)
-          FILES=$( { (cd "$X86_APP" && find . -type f 2>/dev/null) || true; (cd "$ARM_APP" && find . -type f 2>/dev/null) || true; } | sed 's|^\./||' | sort -u )
-
-          # Helper to merge or copy files robustly
-          printf '%s\n' "$FILES" | while IFS= read -r rel || [ -n "$rel" ]; do
-            [ -z "$rel" ] && continue
-            src_a="$X86_APP/$rel"
-            src_b="$ARM_APP/$rel"
-            dst="$UNIVERSAL_APP/$rel"
-            mkdir -p "$(dirname "$dst")"
-            echo "Processing: $rel" >> "$MERGE_LOG"
-            if [ -f "$src_a" ] && [ -f "$src_b" ]; then
-              echo "Both exist: $src_a and $src_b" >> "$MERGE_LOG"
-              # If both are Mach-O binaries, attempt to merge intelligently
-              if file "$src_a" | grep -qi 'Mach-O' && file "$src_b" | grep -qi 'Mach-O'; then
-                echo "Both are Mach-O: checking archs" >> "$MERGE_LOG"
-                a_info=$(lipo -info "$src_a" 2>/dev/null || true)
-                b_info=$(lipo -info "$src_b" 2>/dev/null || true)
-                echo "lipo src_a: $a_info" >> "$MERGE_LOG"
-                echo "lipo src_b: $b_info" >> "$MERGE_LOG"
-
-                a_has_x86=$(printf '%s' "$a_info" | grep -qi 'x86_64' && echo yes || echo no)
-                a_has_arm=$(printf '%s' "$a_info" | grep -qi 'arm64' && echo yes || echo no)
-                b_has_x86=$(printf '%s' "$b_info" | grep -qi 'x86_64' && echo yes || echo no)
-                b_has_arm=$(printf '%s' "$b_info" | grep -qi 'arm64' && echo yes || echo no)
-
-                # If one file is already universal (has both arches) prefer it
-                if [ "$a_has_x86" = "yes" ] && [ "$a_has_arm" = "yes" ]; then
-                  echo "Source A already universal; copying A" >> "$MERGE_LOG"
-                  cp -a "$src_a" "$dst"
-                elif [ "$b_has_x86" = "yes" ] && [ "$b_has_arm" = "yes" ]; then
-                  echo "Source B already universal; copying B" >> "$MERGE_LOG"
-                  cp -a "$src_b" "$dst"
-                else
-                  # Try to create a universal binary when we have complementary slices
-                  if [ "$a_has_x86" = "yes" ] && [ "$b_has_arm" = "yes" ]; then
-                    echo "Attempt lipo: A(x86) + B(arm)" >> "$MERGE_LOG"
-                    if /usr/bin/lipo -create "$src_a" "$src_b" -output "$dst" 2>>"$MERGE_LOG"; then
-                      echo "lipo create succeeded for $rel" >> "$MERGE_LOG"
-                    else
-                      echo "lipo failed for $rel" >> "$MERGE_LOG"
-                      # Prefer preserving x86 slice if available
-                      if [ "$a_has_x86" = "yes" ]; then
-                        echo "Falling back to copying x86 (A) to preserve x86 slice" >> "$MERGE_LOG"
-                        cp -a "$src_a" "$dst"
-                      elif [ "$b_has_x86" = "yes" ]; then
-                        echo "Falling back to copying x86 (B) to preserve x86 slice" >> "$MERGE_LOG"
-                        cp -a "$src_b" "$dst"
-                      else
-                        echo "No x86 slice available; copying arm (B)" >> "$MERGE_LOG"
-                        cp -a "$src_b" "$dst"
-                      fi
-                    fi
-                  elif [ "$a_has_arm" = "yes" ] && [ "$b_has_x86" = "yes" ]; then
-                    echo "Attempt lipo: B(x86) + A(arm) (swapped order)" >> "$MERGE_LOG"
-                    if /usr/bin/lipo -create "$src_b" "$src_a" -output "$dst" 2>>"$MERGE_LOG"; then
-                      echo "lipo create succeeded for $rel" >> "$MERGE_LOG"
-                    else
-                      echo "lipo failed for $rel" >> "$MERGE_LOG"
-                      if [ "$b_has_x86" = "yes" ]; then
-                        echo "Falling back to copying x86 (B)" >> "$MERGE_LOG"
-                        cp -a "$src_b" "$dst"
-                      elif [ "$a_has_x86" = "yes" ]; then
-                        echo "Falling back to copying x86 (A)" >> "$MERGE_LOG"
-                        cp -a "$src_a" "$dst"
-                      else
-                        echo "No x86 slice available; copying arm (A)" >> "$MERGE_LOG"
-                        cp -a "$src_a" "$dst"
-                      fi
-                    fi
-                  else
-                    # No complementary slices: prefer copying the file that contains an x86 slice,
-                    # since running on x86 needs that. Fallback to arm if x86 absent.
-                    if [ "$a_has_x86" = "yes" ]; then
-                      echo "Only A contains x86; copying A" >> "$MERGE_LOG"
-                      cp -a "$src_a" "$dst"
-                    elif [ "$b_has_x86" = "yes" ]; then
-                      echo "Only B contains x86; copying B" >> "$MERGE_LOG"
-                      cp -a "$src_b" "$dst"
-                    else
-                      echo "No x86 slices detected; copying arm (B) as last resort" >> "$MERGE_LOG"
-                      cp -a "$src_b" "$dst"
-                    fi
-                  fi
-                fi
-                # Ensure executable bit preserved for binary files
-                chmod a+rX "$dst" || true
-                # Log resulting binary info if created/copied
-                lipo -info "$dst" 2>>"$MERGE_LOG" || file "$dst" >> "$MERGE_LOG" || true
-              else
-                # Not both Mach-O: prefer x86 from src_a if it exists, otherwise arm
-                echo "Both files exist but not Mach-O: prefer x86 if present" >> "$MERGE_LOG"
-                if [ -f "$src_a" ]; then
-                  cp -a "$src_a" "$dst"
-                else
-                  cp -a "$src_b" "$dst"
-                fi
-              fi
-            elif [ -f "$src_b" ]; then
-              echo "Copying arm64 file $rel" >> "$MERGE_LOG"
-              cp -a "$src_b" "$dst"
-            elif [ -f "$src_a" ]; then
-              echo "Copying x86 file $rel" >> "$MERGE_LOG"
-              cp -a "$src_a" "$dst"
-            else
-              echo "No file for $rel; skipping" >> "$MERGE_LOG"
-            fi
-          done
-
-          # Extra diagnostics: check main executables in Contents/MacOS
-          echo "Checking Contents/MacOS executables:" >> "$MERGE_LOG"
-          find "$UNIVERSAL_APP"/Contents/MacOS -type f -maxdepth 1 -print0 2>/dev/null | while IFS= read -r -d '' exe; do
-            echo "Executable: $exe" >> "$MERGE_LOG"
-            lipo -info "$exe" 2>>"$MERGE_LOG" || file "$exe" >> "$MERGE_LOG" || true
-            chmod a+rX "$exe" || true
-          done
-
-          chmod -R a+rX "$UNIVERSAL_APP" || true
-          echo "Final file list (top-level) for universal app:" >> "$MERGE_LOG"
-          find "$UNIVERSAL_APP" -maxdepth 4 -ls >> "$MERGE_LOG" || true
-          # copy merge log into universal dir so artifact includes it
-          cp "$MERGE_LOG" "$UNIVERSAL_APP"/ || true
-
-      - name: Package universal app into zip
-        run: |
-          set -eux
-          cd work/universal
-          if [ -d DriveAnalyzer.app ]; then
-            ditto -c -k --sequesterRsrc --keepParent DriveAnalyzer.app driveanalyzer-universal.app.zip
-            ls -la driveanalyzer-universal.app.zip
-          else
-            echo "Universal .app not found"
-            ls -la
-            exit 1
-          fi
-
-      - name: Upload universal artifact (.app zip)
-        uses: actions/upload-artifact@v4
-        with:
-          name: driveanalyzer-universal-app
-          path: work/universal/driveanalyzer-universal.app.zip
-
-      - name: Upload merge logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: driveanalyzer-universal-logs
-          path: |
-            work/universal/**
