@@ -297,4 +297,4 @@ jobs:
         with:
           name: driveanalyzer-universal-logs
           path: |
-            work/universal/* || true
+            work/universal/**
